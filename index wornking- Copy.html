@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>COCESNA Radar Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .panel {
+      position: absolute;
+      z-index: 1000;
+      top: 12px;
+      left: 12px;
+      background: rgba(255,255,255,0.94);
+      padding: 12px;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+      min-width: 290px;
+    }
+
+    .panel h1 {
+      font-size: 16px;
+      margin: 0 0 6px 0;
+    }
+
+    .panel p {
+      font-size: 13px;
+      margin: 4px 0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button:hover {
+      background: #444;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #555;
+    }
+
+    input[type="range"] {
+      width: 130px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div class="panel">
+    <h1>Leo´s Radar Viewer</h1>
+    <p id="timestamp">COCESNA WMS radar layer active</p>
+    <p class="small">Layer: LNB CMAX 450 km, 0-18 km, dBZ</p>
+
+    <div class="controls">
+      <button onclick="map.setView([15.2, -86.2], 7)">Honduras</button>               
+      <button onclick="map.setView([16, -70], 5)">Caribbean</button>
+    </div>
+
+    <div class="controls">
+      <button onclick="toggleCocesna()">Toggle COCESNA</button>
+      <button onclick="toggleElSalvador()">Toggle El Salvador</button>
+      <button onclick="refreshCocesna()">Refresh Radar</button>
+    </div>
+
+    <div class="controls">
+      <span class="small">COCESNA opacity</span>
+      <input id="cocesnaOpacitySlider" type="range" min="0" max="100" value="65" oninput="setCocesnaOpacity(this.value)" />
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // Main map view
+    const map = L.map("map").setView([15.2, -86.2], 6);
+
+    // Base map
+    L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  {
+    attribution: "&copy; OpenStreetMap &copy; CARTO",
+    subdomains: "abcd",
+    maxZoom: 19
+  }
+).addTo(map);
+
+    // Airport markers
+   
+    // COCESNA radar WMS layer
+  const cocesnaRadar = L.tileLayer.wms(
+  "http://rainweb.cocesna.org:8080/geoserver/wms",
+  {
+    layers: "geosolutions:LNB_CAPPI_Z_450Km_1Km_cappi_dBZ",
+    styles: "NEXRAD_dBZ",
+    format: "image/png",
+    transparent: true,
+    version: "1.1.1",
+    srs: "EPSG:4326",
+    opacity: 0.85,
+    attribution: "COCESNA CAPPI Radar"
+  }
+).addTo(map);
+
+//El Salvador
+// El Salvador official radar animation
+const elSalvadorBaseUrl = "https://radar-cdn.snet.gob.sv";
+const elSalvadorListUrl = "http://127.0.0.1:8001/el-salvador/list";
+
+// Official bounds from El Salvador's own Leaflet viewer
+const elSalvadorBounds60 = [
+  [12.705, -90.286],
+  [14.704, -87.560]
+];
+
+let elSalvadorFrames = [];
+let elSalvadorIndex = 0;
+let elSalvadorLayer = null;
+let elSalvadorVisible = true;
+let elSalvadorTimer = null;
+
+async function loadElSalvadorFrames() {
+  const response = await fetch(elSalvadorListUrl, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+
+  const fixed = text
+    .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')
+    .replace(/'/g, '"');
+
+  const data = JSON.parse(fixed);
+
+  elSalvadorFrames = data
+    .map(item => item.imagen)
+    .reverse();
+
+  elSalvadorIndex = 0;
+  showElSalvadorFrame();
+}function showElSalvadorFrame() {
+  if (!elSalvadorVisible || elSalvadorFrames.length === 0) return;
+
+  if (elSalvadorLayer) {
+    map.removeLayer(elSalvadorLayer);
+  }
+
+  const filename = elSalvadorFrames[elSalvadorIndex];
+  const imageUrl = `${elSalvadorBaseUrl}/esa8/Images/60km/${filename}`;
+
+  elSalvadorLayer = L.imageOverlay(
+    imageUrl,
+    elSalvadorBounds60,
+    { opacity: 0.75 }
+  ).addTo(map);
+
+  document.getElementById("timestamp").textContent =
+    "El Salvador radar: " + filename;
+
+  elSalvadorIndex++;
+
+  if (elSalvadorIndex >= elSalvadorFrames.length) {
+    elSalvadorIndex = 0;
+  }
+}
+
+function startElSalvadorAnimation() {
+  stopElSalvadorAnimation();
+  showElSalvadorFrame();
+  elSalvadorTimer = setInterval(showElSalvadorFrame, 1000);
+}
+
+function stopElSalvadorAnimation() {
+  if (elSalvadorTimer) {
+    clearInterval(elSalvadorTimer);
+    elSalvadorTimer = null;
+  }
+}
+
+function toggleElSalvador() {
+  if (elSalvadorVisible) {
+    elSalvadorVisible = false;
+    stopElSalvadorAnimation();
+
+    if (elSalvadorLayer) {
+      map.removeLayer(elSalvadorLayer);
+      elSalvadorLayer = null;
+    }
+  } else {
+    elSalvadorVisible = true;
+    startElSalvadorAnimation();
+  }
+}
+
+// Load frames now, refresh frame list every 5 minutes
+loadElSalvadorFrames().then(startElSalvadorAnimation);
+setInterval(loadElSalvadorFrames, 1000 * 60 * 5);
+
+// Belize radar WMS layer
+
+
+    let cocesnaVisible = true;
+    let cocesnaOpacity = 0.65;
+
+    function applyCocesnaBlendMode() {
+      const container = cocesnaRadar.getContainer();
+      if (container) {
+        // This visually suppresses black no-data pixels from the WMS raster.
+        container.style.mixBlendMode = "screen";
+      }
+    }
+
+    function setCocesnaOpacity(value) {
+      cocesnaOpacity = Number(value) / 100;
+      cocesnaRadar.setOpacity(cocesnaOpacity);
+    }
+
+    function toggleCocesna() {
+      if (cocesnaVisible) {
+        map.removeLayer(cocesnaRadar);
+      } else {
+        map.addLayer(cocesnaRadar);
+        cocesnaRadar.setOpacity(cocesnaOpacity);
+        setTimeout(applyCocesnaBlendMode, 100);
+      }
+
+      cocesnaVisible = !cocesnaVisible;
+    }
+
+    function refreshCocesna() {
+      cocesnaRadar.redraw();
+      document.getElementById("timestamp").textContent =
+        "COCESNA WMS radar refreshed: " + new Date().toLocaleString();
+      setTimeout(applyCocesnaBlendMode, 100);
+    }
+
+    // Apply blend mode after first load
+    setTimeout(applyCocesnaBlendMode, 300);
+
+    // Auto-refresh every 60 seconds
+    setInterval(refreshCocesna, 60000);
+
+    /*
+      RainViewer is intentionally disabled in this version.
+      This file is focused only on the COCESNA GeoServer WMS radar product.
+    */
+  </script>
+</body>
+</html>

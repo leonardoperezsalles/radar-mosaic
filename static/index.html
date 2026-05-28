@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Leo's Regional Radar Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .panel {
+      position: absolute;
+      z-index: 1000;
+      top: 12px;
+      left: 12px;
+      background: rgba(255,255,255,0.94);
+      padding: 12px;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+      min-width: 310px;
+    }
+
+    .panel h1 {
+      font-size: 16px;
+      margin: 0 0 6px 0;
+    }
+
+    .panel p {
+      font-size: 13px;
+      margin: 4px 0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button:hover {
+      background: #444;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #555;
+    }
+
+    input[type="range"] {
+      width: 130px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div class="panel">
+    <h1>Leo's Regional Radar Viewer</h1>
+    <p id="timestamp">Radar viewer loaded</p>
+    <p class="small">COCESNA WMS + El Salvador + San Andrés</p>
+
+    <div class="controls">
+      <button onclick="map.setView([15.2, -86.2], 6)">Honduras</button>
+      <button onclick="map.setView([13.687, -88.883], 9)">El Salvador</button>
+      <button onclick="map.setView([12.6, -81.7], 6)">San Andrés</button>
+      <button onclick="map.setView([16, -70], 5)">Caribbean</button>
+    </div>
+
+    <div class="controls">
+      <button onclick="toggleCocesna()">COCESNA</button>
+      <button onclick="toggleElSalvador()">El Salvador</button>
+      <button onclick="toggleBelize()">Belize</button>
+      <button onclick="toggleSanAndres()">San Andrés</button>
+      <button onclick="toggleElSalvadorPlay()">Play/Pause ES</button>
+      <button onclick="startCocesnaAnimation()">Animate COCESNA</button>
+      <button onclick="stopCocesnaAnimation()">Stop COCESNA</button>
+      <button onclick="refreshAll()">Refresh All</button>
+    </div>
+
+    <div class="controls">
+      <span class="small">COCESNA opacity</span>
+      <input type="range" min="0" max="100" value="65" oninput="setCocesnaOpacity(this.value)" />
+    </div>
+
+    <div class="controls">
+      <span class="small">El Salvador opacity</span>
+      <input type="range" min="0" max="100" value="75" oninput="setElSalvadorOpacity(this.value)" />
+    </div>
+
+    <div class="controls">
+      <span class="small">Belize opacity</span>
+      <input type="range" min="0" max="100" value="65" oninput="setBelizeOpacity(this.value)" />
+    </div>
+
+    <div class="controls">
+      <span class="small">San Andrés opacity</span>
+      <input type="range" min="0" max="100" value="75" oninput="setSanAndresOpacity(this.value)" />
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    const map = L.map("map").setView([15.2, -86.2], 6);
+
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        attribution: "&copy; OpenStreetMap &copy; CARTO",
+        subdomains: "abcd",
+        maxZoom: 19
+      }
+    ).addTo(map);
+
+    // =========================
+    // COCESNA RADAR
+    // =========================
+
+    let cocesnaRadar = L.tileLayer.wms(
+      "http://rainweb.cocesna.org:8080/geoserver/wms",
+      {
+        layers: "geosolutions:LNB_CAPPI_Z_450Km_1Km_cappi_dBZ",
+        styles: "NEXRAD_dBZ",
+        format: "image/png",
+        transparent: true,
+        version: "1.1.1",
+        srs: "EPSG:4326",
+        opacity: 0.85,
+        attribution: "COCESNA CAPPI Radar"
+      }
+    ).addTo(map);
+
+    let cocesnaTimes = [];
+    let cocesnaTimeIndex = 0;
+    let cocesnaTimer = null;
+    let cocesnaVisible = true;
+
+    function toggleCocesna() {
+      if (cocesnaVisible) {
+        map.removeLayer(cocesnaRadar);
+      } else {
+        map.addLayer(cocesnaRadar);
+      }
+
+      cocesnaVisible = !cocesnaVisible;
+    }
+
+    function setCocesnaOpacity(value) {
+      cocesnaRadar.setOpacity(Number(value) / 100);
+    }
+
+    function refreshCocesna() {
+      cocesnaRadar.setParams({
+        time: "current",
+        _refresh: Date.now()
+      });
+
+      cocesnaRadar.redraw();
+
+      document.getElementById("timestamp").textContent =
+        "COCESNA refreshed: " + new Date().toLocaleString();
+    }
+
+    async function loadCocesnaTimes() {
+      const response = await fetch(API_BASE + "/cocesna/times");
+      const data = await response.json();
+
+      cocesnaTimes = data.times || [];
+      cocesnaTimes = cocesnaTimes.slice(-24);
+      cocesnaTimeIndex = 0;
+
+      console.log("COCESNA times loaded:", cocesnaTimes);
+    }
+
+    function showCocesnaTimeFrame() {
+      if (cocesnaTimes.length === 0) {
+        console.warn("No COCESNA times loaded");
+        return;
+      }
+
+      const t = cocesnaTimes[cocesnaTimeIndex];
+
+      cocesnaRadar.setParams(
+        {
+          time: t,
+          _refresh: Date.now()
+        },
+        false
+      );
+
+      cocesnaRadar.redraw();
+
+      document.getElementById("timestamp").textContent =
+        "COCESNA radar: " + t;
+
+      cocesnaTimeIndex++;
+
+      if (cocesnaTimeIndex >= cocesnaTimes.length) {
+        cocesnaTimeIndex = 0;
+      }
+    }
+
+    async function startCocesnaAnimation() {
+      stopCocesnaAnimation();
+
+      if (cocesnaTimes.length === 0) {
+        await loadCocesnaTimes();
+      }
+
+      showCocesnaTimeFrame();
+      cocesnaTimer = setInterval(showCocesnaTimeFrame, 1000);
+    }
+
+    function stopCocesnaAnimation() {
+      if (cocesnaTimer) {
+        clearInterval(cocesnaTimer);
+        cocesnaTimer = null;
+      }
+
+      refreshCocesna();
+    }
+
+    // =========================
+    // EL SALVADOR RADAR
+    // =========================
+
+    const elSalvadorListUrl = API_BASE + "/el-salvador/list";
+
+    const elSalvadorBounds60 = [
+      [12.705, -90.286],
+      [14.704, -87.560]
+    ];
+
+    let elSalvadorFrames = [];
+    let elSalvadorIndex = 0;
+    let elSalvadorLayer = null;
+    let elSalvadorVisible = true;
+    let elSalvadorPlaying = true;
+    let elSalvadorTimer = null;
+    let elSalvadorOpacity = 0.75;
+
+    async function loadElSalvadorFrames() {
+      const response = await fetch(elSalvadorListUrl, {
+        method: "POST"
+      });
+
+      const text = await response.text();
+
+      const fixed = text
+        .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')
+        .replace(/'/g, '"');
+
+      const data = JSON.parse(fixed);
+
+      elSalvadorFrames = data
+        .map(item => item.imagen)
+        .reverse();
+
+      elSalvadorIndex = 0;
+      showElSalvadorFrame();
+    }
+
+    function showElSalvadorFrame() {
+      if (!elSalvadorVisible || elSalvadorFrames.length === 0) return;
+
+      if (elSalvadorLayer) {
+        map.removeLayer(elSalvadorLayer);
+      }
+
+      const filename = elSalvadorFrames[elSalvadorIndex];
+
+      const imageUrl =
+        API_BASE + "/el-salvador/image?filename=" +
+        encodeURIComponent(filename);
+
+      elSalvadorLayer = L.imageOverlay(
+        imageUrl,
+        elSalvadorBounds60,
+        {
+          opacity: elSalvadorOpacity
+        }
+      ).addTo(map);
+
+      document.getElementById("timestamp").textContent =
+        "El Salvador radar: " + filename;
+
+      elSalvadorIndex++;
+
+      if (elSalvadorIndex >= elSalvadorFrames.length) {
+        elSalvadorIndex = 0;
+      }
+    }
+
+    function startElSalvadorAnimation() {
+      stopElSalvadorAnimation();
+      elSalvadorPlaying = true;
+      showElSalvadorFrame();
+      elSalvadorTimer = setInterval(showElSalvadorFrame, 1000);
+    }
+
+    function stopElSalvadorAnimation() {
+      if (elSalvadorTimer) {
+        clearInterval(elSalvadorTimer);
+        elSalvadorTimer = null;
+      }
+
+      elSalvadorPlaying = false;
+    }
+
+    function toggleElSalvadorPlay() {
+      if (elSalvadorPlaying) {
+        stopElSalvadorAnimation();
+      } else {
+        startElSalvadorAnimation();
+      }
+    }
+
+    function toggleElSalvador() {
+      if (elSalvadorVisible) {
+        elSalvadorVisible = false;
+        stopElSalvadorAnimation();
+
+        if (elSalvadorLayer) {
+          map.removeLayer(elSalvadorLayer);
+          elSalvadorLayer = null;
+        }
+      } else {
+        elSalvadorVisible = true;
+        startElSalvadorAnimation();
+      }
+    }
+
+    function setElSalvadorOpacity(value) {
+      elSalvadorOpacity = Number(value) / 100;
+
+      if (elSalvadorLayer) {
+        elSalvadorLayer.setOpacity(elSalvadorOpacity);
+      }
+    }
+
+    // =========================
+    // BELIZE RADAR
+    // =========================
+
+    const belizeBounds400 = [
+      [14.00, -92.00],
+      [21.30, -84.60]
+    ];
+
+    let belizeLayer = null;
+    let belizeVisible = false;
+    let belizeOpacity = 0.65;
+
+    function showBelize() {
+      const imageUrl =
+        API_BASE + "/belize/400km?t=" + Date.now();
+
+      if (belizeLayer) {
+        map.removeLayer(belizeLayer);
+      }
+
+      belizeLayer = L.imageOverlay(
+        imageUrl,
+        belizeBounds400,
+        {
+          opacity: belizeOpacity
+        }
+      ).addTo(map);
+    }
+
+    function toggleBelize() {
+      if (belizeVisible) {
+        if (belizeLayer) {
+          map.removeLayer(belizeLayer);
+          belizeLayer = null;
+        }
+
+        belizeVisible = false;
+      } else {
+        showBelize();
+        belizeVisible = true;
+      }
+    }
+
+    function setBelizeOpacity(value) {
+      belizeOpacity = Number(value) / 100;
+
+      if (belizeLayer) {
+        belizeLayer.setOpacity(belizeOpacity);
+      }
+    }
+
+    // =========================
+    // SAN ANDRES RADAR
+    // =========================
+
+    const sanAndresBounds = [
+      [10.5, -84.5],
+      [16.5, -77.0]
+    ];
+
+    let sanAndresLayer = null;
+    let sanAndresVisible = true;
+    let sanAndresOpacity = 0.75;
+
+    function showSanAndres() {
+      const imageUrl =
+        API_BASE + "/san-andres/z?t=" + Date.now();
+
+      if (sanAndresLayer) {
+        map.removeLayer(sanAndresLayer);
+      }
+
+      sanAndresLayer = L.imageOverlay(
+        imageUrl,
+        sanAndresBounds,
+        {
+          opacity: sanAndresOpacity
+        }
+      ).addTo(map);
+    }
+
+    function toggleSanAndres() {
+      if (sanAndresVisible) {
+        if (sanAndresLayer) {
+          map.removeLayer(sanAndresLayer);
+          sanAndresLayer = null;
+        }
+
+        sanAndresVisible = false;
+      } else {
+        showSanAndres();
+        sanAndresVisible = true;
+      }
+    }
+
+    function setSanAndresOpacity(value) {
+      sanAndresOpacity = Number(value) / 100;
+
+      if (sanAndresLayer) {
+        sanAndresLayer.setOpacity(sanAndresOpacity);
+      }
+    }
+
+    // =========================
+    // REFRESH
+    // =========================
+
+    function refreshAll() {
+      refreshCocesna();
+      loadElSalvadorFrames();
+      showSanAndres();
+
+      if (belizeVisible) {
+        showBelize();
+      }
+    }
+
+    setInterval(refreshCocesna, 60000);
+    setInterval(loadElSalvadorFrames, 1000 * 60 * 5);
+
+    loadElSalvadorFrames().then(startElSalvadorAnimation);
+    showSanAndres();
+  </script>
+</body>
+</html>
