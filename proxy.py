@@ -126,47 +126,20 @@ def el_salvador_image(filename: str = Query(...)):
 # BELIZE RADAR API CATALOG
 # =========================
 
-@app.get("/belize/radar-images")
-def belize_radar_images():
-    browser_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://nms.gov.bz/sensors/radar-imagery/",
-    }
+@app.get("/belize/400km")
+def belize_400km():
 
-    config_response = requests.get(
-        "https://nms.gov.bz/config.php",
-        headers=browser_headers,
-        timeout=15
-    )
+    url = "https://nms.gov.bz/images/radar/Recent_400km_loop.gif"
 
-    config = config_response.json()
-
-    token = config["AUTH_TOKEN"]
-    api_url = config["WIMP3_HOST"] + "/api/radar-images/"
-
-    api_headers = {
-        "Authorization": "Token " + token,
-        "User-Agent": browser_headers["User-Agent"],
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://nms.gov.bz/sensors/radar-imagery/",
-        "Origin": "https://nms.gov.bz",
-    }
-
-    api_response = requests.get(
-        api_url,
-        headers=api_headers,
-        timeout=15
+    r = requests.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=30
     )
 
     return Response(
-        content=api_response.content,
-        status_code=api_response.status_code,
-        media_type="application/json"
+        content=r.content,
+        media_type="image/gif"
     )
 
 
@@ -174,35 +147,6 @@ def belize_radar_images():
 # BELIZE CLEANED 400 KM IMAGE
 # =========================
 
-@app.get("/belize/400km")
-def belize_400km():
-    image_url = "https://nms.gov.bz/images/radar/Recent_400km_pic.gif"
-
-    r = requests.get(
-        image_url,
-        headers={
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://nms.gov.bz/sensors/radar-imagery/"
-        },
-        timeout=15
-    )
-
-    img = Image.open(io.BytesIO(r.content)).convert("RGBA")
-
-    width, height = img.size
-
-    # Crop out right-side legend/info panel
-    img = img.crop((0, 0, int(width * 0.78), height))
-
-    img = keep_radar_colors_only(img)
-
-    output = io.BytesIO()
-    img.save(output, format="PNG")
-
-    return Response(
-        content=output.getvalue(),
-        media_type="image/png"
-    )
 
 
 # =========================
@@ -231,7 +175,7 @@ def mosaic_caribbean():
     # Belize layer
     # -------------------------
 
-    belize_url = "https://nms.gov.bz/images/radar/Recent_400km_pic.gif"
+    belize_url = "https://nms.gov.bz/images/radar/Recent_400km_loop.gif"
 
     belize_response = requests.get(
         belize_url,
