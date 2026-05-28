@@ -260,7 +260,7 @@ def mosaic_caribbean():
     )
 @app.get("/san-andres/z")
 def san_andres_z():
-    url = "https://bart.ideam.gov.co/ospa/gifs/Radar/Transp/San_Andres/San_Andres_z.gif"
+    url = "https://bart.ideam.gov.co/ospa/gifs/Radar/San_Andres_Basemap.gif"
 
     r = requests.get(
         url,
