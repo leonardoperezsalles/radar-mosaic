@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Response, Query
+from fastapi import FastAPI, Response, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import requests
@@ -272,33 +272,28 @@ def san_andres_z():
         content=r.content,
         media_type="image/gif"
     )
-@app.get("/cocesna/times")
-def cocesna_times():
-    url = "http://rainweb.cocesna.org:8080/geoserver/wms?service=WMS&request=GetCapabilities"
+@app.get("/cocesna/wms")
+def cocesna_wms(request: Request):
 
-    r = requests.get(url, timeout=20)
-    text = r.text
+    base_url = "http://rainweb.cocesna.org:8080/geoserver/wms"
 
-    start = text.find('<Name>geosolutions:LNB_CAPPI_Z_450Km_1Km_cappi_dBZ</Name>')
-    if start == -1:
-        return {"times": []}
+    params = dict(request.query_params)
 
-    section = text[start:start + 20000]
+    r = requests.get(
+        base_url,
+        params=params,
+        timeout=30
+    )
 
-    dim_start = section.find('<Dimension name="time"')
-    if dim_start == -1:
-        return {"times": []}
+    content_type = r.headers.get(
+        "Content-Type",
+        "image/png"
+    )
 
-    close_start = section.find(">", dim_start)
-    close_end = section.find("</Dimension>", close_start)
-
-    times_text = section[close_start + 1:close_end].strip()
-    times = [t.strip() for t in times_text.split(",") if t.strip()]
-
-    return {
-        "times": times,
-        "latest": times[-1] if times else None
-    }
+    return Response(
+        content=r.content,
+        media_type=content_type
+    )
     # -------------------------
     # El Salvador layer
     # -------------------------

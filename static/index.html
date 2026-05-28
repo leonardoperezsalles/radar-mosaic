@@ -137,7 +137,7 @@
     // =========================
 
     let cocesnaRadar = L.tileLayer.wms(
-      "http://rainweb.cocesna.org:8080/geoserver/wms",
+      API_BASE + "/cocesna/wms",
       {
         layers: "geosolutions:LNB_CAPPI_Z_450Km_1Km_cappi_dBZ",
         styles: "NEXRAD_dBZ",
