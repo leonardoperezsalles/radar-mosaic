@@ -264,10 +264,8 @@ def san_andres_z():
 
     r = requests.get(
         url,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        },
-        timeout=15
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=30
     )
 
     return Response(
