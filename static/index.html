@@ -35,6 +35,7 @@
       font-size: 13px;
       margin: 4px 0;
     }
+  
 
     .controls {
       display: flex;
@@ -66,6 +67,11 @@
     input[type="range"] {
       width: 130px;
     }
+   
+    .panel.collapsed {
+  height: 40px;
+  overflow: hidden;
+}
   </style>
 </head>
 
@@ -73,6 +79,7 @@
   <div id="map"></div>
 
   <div class="panel">
+    <button onclick="togglePanel()">☰ Menu</button>
     <h1>Leo's Regional Radar Viewer</h1>
     <p id="timestamp">Radar viewer loaded</p>
     <p class="small">COCESNA WMS + El Salvador + San Andrés</p>
@@ -80,9 +87,7 @@
     <div class="controls">
       <button onclick="map.setView([15.2, -86.2], 6)">Honduras</button>
       <button onclick="map.setView([13.687, -88.883], 9)">El Salvador</button>
-      <button onclick="map.setView([12.6, -81.7], 6)">San Andrés</button>
-      <button onclick="map.setView([16, -70], 5)">Caribbean</button>
-    </div>
+         </div>
 
     <div class="controls">
       <button onclick="toggleCocesna()">COCESNA</button>
@@ -119,6 +124,10 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
+    function togglePanel() {
+  const panel = document.querySelector(".panel");
+  panel.classList.toggle("collapsed");
+}
     const API_BASE = window.location.origin;
 
     const map = L.map("map").setView([15.2, -86.2], 6);
